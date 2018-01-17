@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -11,32 +12,56 @@ using System.Xml.Linq;
 
 namespace LSWFTPConnect {
     public partial class Form1 : Form {
-        static List<string> files = new List<string>(); //file list
-        static string folderName = "";
+        static List<FtpListItem> files = new List<FtpListItem>(); //file list
+        static string folderName = ""; 
         static FtpClient client;
+        List<string> lifeLines;
+        List<string> annLines;
+        static PasswordRepository passRep = new PasswordRepository();
 
         public Form1() {
             InitializeComponent();
+
+            if(passRep.GetPassword() != null && passRep.GetPassword() != "") {
+                tbPassword.Text = passRep.GetPassword();
+            }
+
+            if(passRep.GetPassword() == null || passRep.GetPassword() == "") {
+                btnFiles.Enabled = false;
+                btnGo.Enabled = false;
+            }
         }
 
         private void btnFiles_Click(object sender, EventArgs e) {
             try {
-
+                lblStatus.Text = "Connecting...";
                 ConnectFTP();
+                lblStatus.Text = "Connected! Getting listings...";
+                lblStatus.Refresh();
                 foreach (FtpListItem item in client.GetListing("/")) {
                     Console.WriteLine(item);
-                    if (item.Type == FtpFileSystemObjectType.File) {
-                        files.Add(item.FullName.ToString());
+                    if (item.Type == FtpFileSystemObjectType.File && item.FullName.Contains(@"/AGY")) {
+                        files.Add(item);
                     }
                 }
 
-                foreach (string item in files) {
-                    lbFiles.Items.Add(item);
+                files.Sort(delegate (FtpListItem lhs, FtpListItem rhs) {
+                    if (lhs.Modified == null && rhs.Modified == null) return 0;
+                    else if (lhs.Modified == null) return -1;
+                    else if (rhs.Modified == null) return 1;
+                    else return lhs.Modified.CompareTo(rhs.Modified)*-1;
+                });
+
+                foreach (FtpListItem item in files) {
+                    lbFiles.Items.Add(item.FullName.ToString());
                 }
+
+                lblStatus.Text = "Files Loaded, please choose one to process";
             } catch (Exception ex) {
                 Console.WriteLine(ex.Message.ToString());
             }
         }
+
         void OnValidateCertificate(FtpClient control, FtpSslValidationEventArgs e) {
             // add logic to test if certificate is valid here
             e.Accept = true;
@@ -72,7 +97,7 @@ namespace LSWFTPConnect {
             client.DownloadFile(commPath + fileName, selectedFile);
             client.Disconnect();
             lblStatus.Text = "Done downloading file. Processesing";
-            ProcessCommReport(commPath + fileName, lblOutput.Text + "\\" + 
+            ProcessCommReport(commPath + fileName, lblOutput.Text + "\\" +
                 Path.GetFileNameWithoutExtension(selectedFile));
             lblStatus.Text = "Done Processesing";
         }
@@ -80,8 +105,9 @@ namespace LSWFTPConnect {
         private void ConnectFTP() {
             try {
                 client = new FtpClient();
-                client.Host = @"FTPS.NATIONALLIFE.COM";
-                client.Credentials = new NetworkCredential(@"RALotterAgencyBuilders", @";f2uMuXV1DW@");
+                client.Host = tbServer.Text;
+                Console.WriteLine(passRep.GetPassword());
+                client.Credentials = new NetworkCredential(tbUserName.Text, passRep.GetPassword());
                 client.EncryptionMode = FtpEncryptionMode.Explicit;
                 client.SslProtocols = SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12;
                 client.ValidateCertificate += new FtpSslValidation(OnValidateCertificate);
@@ -115,21 +141,19 @@ namespace LSWFTPConnect {
                          where data.Name.LocalName == "OLifE"
                          select data;
 
-            List<string> lifeLines = new List<string>();
-            List<string> annLines = new List<string>();
+            lifeLines = new List<string>();
+            annLines = new List<string>();
 
-            foreach (var data in oLifes) {
-                var plan = data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "ProductCode").Value;
+            foreach (var data in oLifes) {//parent of the commission data is OLifE (1 to 1)
+                var plan = data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "PlanName").Value;
                 var date = data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "IssueDate").Value;
-                var polType = data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "ProductType").Value;
-
+                var sDate = data.Element(ns0 + "FinancialStatement").Element(ns0 + "StatementDate").Value;
                 var commDet = data.Element(ns0 + "FinancialStatement").Element(ns0 + "CommissionStatement")
                     .Element(ns0 + "CommissionDetail");
 
                 var amt = commDet.Element(ns0 + "EarnedAmt").Value;
                 var polNum = commDet.Attribute("HoldingID").Value;
                 var owner = commDet.Attribute("OwnerPartyID").Value;
-                //var date = commDet.Element(ns0 + "TransactionDate").Value;
                 var commRate = commDet.Element(ns0 + "CommissionRate").Value;
                 var split = commDet.Element(ns0 + "SplitPercent").Value;
                 var prem = commDet.Element(ns0 + "PaymentBasisAmt").Value;
@@ -144,15 +168,16 @@ namespace LSWFTPConnect {
                     line += amt.ToString() + ", 0";
                 }
 
-                Console.WriteLine(line);
+                //line += ", " + sDate;
+
+               // Console.WriteLine(line);
                 if (polNum.StartsWith("LS")) {
                     lifeLines.Add(line);
-                }
-                else annLines.Add(line);
+                } else annLines.Add(line);
             }
 
             StreamWriter writer;
-            if (annLines.Count > 0) {
+            if (annLines.Count > 0) {//write annuity lines
                 writer = new StreamWriter(outFile + "_AnnOut.csv");
                 writer.WriteLine("Policy, Full Name, Plan, Issue Date, Premium, Rate %, Rate, Commission, Renewal");
                 foreach (string item in annLines) {
@@ -161,13 +186,41 @@ namespace LSWFTPConnect {
                 writer.Close();
             }
 
-            if (lifeLines.Count > 0) {
+            if (lifeLines.Count > 0) {//write life lines
                 writer = new StreamWriter(outFile + "_LifeOut.csv");
                 writer.WriteLine("Policy, Full Name, Plan, Issue Date, Premium, Rate %, Rate, Commission, Renewal");
                 foreach (string item in lifeLines) {
                     writer.WriteLine(item);
                 }
                 writer.Close();
+            }
+
+            System.Diagnostics.Process.Start(outFile + "_LifeOut.csv");
+            System.Diagnostics.Process.Start(outFile + "_AnnOut.csv");
+        }
+
+        private void btnStore_Click(object sender, EventArgs e) {
+            passRep.SavePassword(tbPassword.Text);
+            btnGo.Enabled = true;
+            btnFiles.Enabled = true;
+        }
+
+        private void btnLocalFile_Click(object sender, EventArgs e) {
+            // Show the FolderBrowserDialog.
+            OpenFileDialog ofd = new OpenFileDialog();
+            string commPath = @"P:\RALFG\Common Files\Commissions & Insurance\Commission Statements\" +
+                DateTime.Now.Year.ToString() + @"\LSW Combo\";
+            ofd.InitialDirectory = commPath;
+            ofd.Filter = "XML Files|*.xml";
+            DialogResult result = ofd.ShowDialog();
+            
+            if (result == DialogResult.OK) {
+                string path = ofd.FileName;
+                string outFileLocal = lblOutput.Text + "\\" + Path.GetFileNameWithoutExtension(path);
+                //lblOutput.Text = path;
+                ProcessCommReport(path, outFileLocal);
+                lblStatus.Text = "Done Processesing";
+
             }
         }
     }
