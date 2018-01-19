@@ -194,8 +194,11 @@ namespace LSWFTPConnect {
                 writer.Close();
             }
 
-            System.Diagnostics.Process.Start(outFile + "_LifeOut.csv");
-            System.Diagnostics.Process.Start(outFile + "_AnnOut.csv");
+            if(File.Exists(outFile + "_LifeOut.csv"))
+                System.Diagnostics.Process.Start(outFile + "_LifeOut.csv");
+
+            if(File.Exists(outFile + "_AnnOut.csv"))
+                System.Diagnostics.Process.Start(outFile + "_AnnOut.csv");
         }
 
         private void btnStore_Click(object sender, EventArgs e) {

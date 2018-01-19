@@ -23,6 +23,7 @@
         /// the contents of this method with the code editor.
         /// </summary>
         private void InitializeComponent() {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             this.btnFiles = new System.Windows.Forms.Button();
             this.lbFiles = new System.Windows.Forms.ListBox();
             this.lblOutput = new System.Windows.Forms.Label();
@@ -185,8 +186,9 @@
             this.Controls.Add(this.lblOutput);
             this.Controls.Add(this.lbFiles);
             this.Controls.Add(this.btnFiles);
+            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Name = "Form1";
-            this.Text = "Form1";
+            this.Text = "LSW FTP Commission Parser";
             this.ResumeLayout(false);
             this.PerformLayout();
 
