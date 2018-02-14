@@ -1,4 +1,5 @@
 ﻿using FluentFTP;
+using Microsoft.Office.Interop.Excel;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -15,8 +16,14 @@ namespace LSWFTPConnect {
         static string folderName = ""; 
         static FtpClient client;
         List<string> lifeLines;
-        List<string> annLines;
+        List<Object> annLines;
         static PasswordRepository passRep = new PasswordRepository();
+        static Microsoft.Office.Interop.Excel.Application oXL;
+        static Microsoft.Office.Interop.Excel._Workbook oWB;
+        static Microsoft.Office.Interop.Excel._Worksheet oSheet;
+        static Microsoft.Office.Interop.Excel.Range oRng;
+        static object misvalue = System.Reflection.Missing.Value;
+
 
         public Form1() {
             InitializeComponent();
@@ -122,11 +129,9 @@ namespace LSWFTPConnect {
 
             try {
                 stream = file.Open(FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            }
-            catch (IOException) {
+            } catch (IOException) {
                 return true;
-            }
-            finally {
+            } finally {
                 if (stream != null)
                     stream.Close();
             }
@@ -141,64 +146,73 @@ namespace LSWFTPConnect {
                          select data;
 
             lifeLines = new List<string>();
-            annLines = new List<string>();
+            annLines = new List<Object>();
 
             foreach (var data in oLifes) {//parent of the commission data is OLifE (1 to 1)
-                var plan = data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "PlanName").Value;
-                var date = data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "IssueDate").Value;
-                var sDate = data.Element(ns0 + "FinancialStatement").Element(ns0 + "StatementDate").Value;
+                string plan = data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "PlanName").Value.ToString();
+                DateTime date = Convert.ToDateTime(data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "IssueDate").Value);
+                DateTime sDate = Convert.ToDateTime(data.Element(ns0 + "FinancialStatement").Element(ns0 + "StatementDate").Value);
                 var commDet = data.Element(ns0 + "FinancialStatement").Element(ns0 + "CommissionStatement")
                     .Element(ns0 + "CommissionDetail");
 
-                var amt = commDet.Element(ns0 + "EarnedAmt").Value;
-                var polNum = commDet.Attribute("HoldingID").Value;
-                var owner = commDet.Attribute("OwnerPartyID").Value;
-                var commRate = commDet.Element(ns0 + "CommissionRate").Value;
-                var split = commDet.Element(ns0 + "SplitPercent").Value;
-                var prem = commDet.Element(ns0 + "PaymentBasisAmt").Value;
-                var type = commDet.Element(ns0 + "CommissionType").Value;
+                double amt = Convert.ToDouble(commDet.Element(ns0 + "EarnedAmt").Value);
+                string polNum = commDet.Attribute("HoldingID").Value.ToString();
+                string owner = commDet.Attribute("OwnerPartyID").Value.ToString();
+                double commRate = Convert.ToDouble(commDet.Element(ns0 + "CommissionRate").Value);
+                double split = Convert.ToDouble(commDet.Element(ns0 + "SplitPercent").Value);
+                double prem = Convert.ToDouble(commDet.Element(ns0 + "PaymentBasisAmt").Value);
+                var type = commDet.Element(ns0 + "CommissionType").Value.ToString();
 
-                string line = polNum + ", " + owner + ", " + plan + ", " + date + ", " +
-                    prem + ", " + commRate + ", " + split + ", ";
+                //string line = polNum + ", " + owner + ", " + plan + ", " + date + ", " +
+                //    prem + ", " + commRate + ", " + split + ", ";
+
+                double comm = 0.0;
+                double ren = 0.0;
 
                 if (type == "Renewal") {
-                    line += ("0, " + amt.ToString());
-                } else {
-                    line += amt.ToString() + ", 0";
-                }
+                    ren = amt;
+                } else comm = amt;
+
+                //if (type == "Renewal") {
+                //    line += ("0, " + amt.ToString());
+                //} else {
+                //    line += amt.ToString() + ", 0";
+                //}
 
                 //line += ", " + sDate;
 
                // Console.WriteLine(line);
                 if (polNum.StartsWith("LS")) {
-                    lifeLines.Add(line);
-                } else annLines.Add(line);
+                    //lifeLines.Add(line);
+                } else annLines.Add(new AnnLine(polNum, owner, plan, date, prem, commRate, split, comm, ren));
             }
 
-            StreamWriter writer;
-            if (annLines.Count > 0) {//write annuity lines
-                writer = new StreamWriter(outFile + "_AnnOut.csv");
-                writer.WriteLine("Policy, Full Name, Plan, Issue Date, Premium, Rate %, Rate, Commission, Renewal");
-                foreach (string item in annLines) {
-                    writer.WriteLine(item);
-                }
-                writer.Close();
-            }
+            writeToExcel(annLines, outFile + "_Ann_out.xls");
 
-            if (lifeLines.Count > 0) {//write life lines
-                writer = new StreamWriter(outFile + "_LifeOut.csv");
-                writer.WriteLine("Policy, Full Name, Plan, Issue Date, Premium, Rate %, Rate, Commission, Renewal");
-                foreach (string item in lifeLines) {
-                    writer.WriteLine(item);
-                }
-                writer.Close();
-            }
+            //StreamWriter writer;
+            //if (annLines.Count > 0) {//write annuity lines
+            //    writer = new StreamWriter(outFile + "_AnnOut.csv");
+            //    writer.WriteLine("Policy, Full Name, Plan, Issue Date, Premium, Rate %, Rate, Commission, Renewal");
+            //    foreach (string item in annLines) {
+            //        writer.WriteLine(item);
+            //    }
+            //    writer.Close();
+            //}
 
-            if(File.Exists(outFile + "_LifeOut.csv"))
-                System.Diagnostics.Process.Start(outFile + "_LifeOut.csv");
+            //if (lifeLines.Count > 0) {//write life lines
+            //    writer = new StreamWriter(outFile + "_LifeOut.csv");
+            //    writer.WriteLine("Policy,Full Name,Plan,Issue Date,Premium,Rate %,Rate,Commission,Renewal");
+            //    foreach (string item in lifeLines) {
+            //        writer.WriteLine(item);
+            //    }
+            //    writer.Close();
+            //}
 
-            if(File.Exists(outFile + "_AnnOut.csv"))
-                System.Diagnostics.Process.Start(outFile + "_AnnOut.csv");
+            //if(File.Exists(outFile + "_LifeOut.csv"))
+            //    System.Diagnostics.Process.Start(outFile + "_LifeOut.csv");
+
+            //if(File.Exists(outFile + "_AnnOut.csv"))
+            //    System.Diagnostics.Process.Start(outFile + "_Ann_out.xls");
         }
 
         private void btnStore_Click(object sender, EventArgs e) {
@@ -223,6 +237,73 @@ namespace LSWFTPConnect {
                 ProcessCommReport(path, outFileLocal);
                 lblStatus.Text = "Done Processesing";
 
+            }
+        }
+
+        public static void writeToExcel(List<Object> lines, string outfile) {
+            try {
+                //Start Excel and get Application object.
+                oXL = new Microsoft.Office.Interop.Excel.Application();
+                oXL.Visible = false;
+                oXL.UserControl = false;
+                oXL.DisplayAlerts = false;
+
+                //Get a new workbook.
+                oWB = (Microsoft.Office.Interop.Excel._Workbook)(oXL.Workbooks.Add(""));
+                oSheet = (Microsoft.Office.Interop.Excel._Worksheet)oWB.ActiveSheet;
+
+                //Add table headers going cell by cell.
+                oSheet.Cells[1, 1] = "Policy";
+                oSheet.Cells[1, 2] = "Fullname";
+                oSheet.Cells[1, 3] = "Plan";
+                oSheet.Cells[1, 4] = "Issue Date";
+                oSheet.Cells[1, 5] = "Premium";
+                oSheet.Cells[1, 6] = "Rate %";
+                oSheet.Cells[1, 7] = "Rate";
+                oSheet.Cells[1, 8] = "Commission";
+                oSheet.Cells[1, 9] = "Renewal";
+                Range rg = (Microsoft.Office.Interop.Excel.Range)oSheet.Cells[1, 4];
+                rg.EntireColumn.NumberFormat = "MM/DD/YYYY";
+
+                //Format A1:D1 as bold, vertical alignment = center.
+                oSheet.get_Range("A1", "I1").Font.Bold = true;
+                oSheet.get_Range("A1", "I1").VerticalAlignment =
+                    Microsoft.Office.Interop.Excel.XlVAlign.xlVAlignCenter;
+
+                for (int i = 0; i < lines.Count; i++) {
+                    AnnLine temp = (AnnLine)lines[i];
+                    object[] tempArr = temp.GetData();
+                    oSheet.get_Range("A" + (i + 2), "I" + (i + 2)).Value2 = tempArr;
+                }
+                oRng = oSheet.get_Range("A1", "I1");
+                oRng.EntireColumn.AutoFit();
+                oXL.Visible = false;
+                oXL.UserControl = false;
+
+                //outFile = GetSavePath();
+                oWB.SaveAs(outfile,
+                    56, //Seems to work better than default excel 16
+                    Type.Missing,
+                    Type.Missing,
+                    false,
+                    false,
+                    Microsoft.Office.Interop.Excel.XlSaveAsAccessMode.xlNoChange,
+                    Type.Missing,
+                    Type.Missing,
+                    Type.Missing,
+                    Type.Missing,
+                    Type.Missing);
+
+                //System.Diagnostics.Process.Start(outFile);
+            }
+            catch (Exception ex) {
+                MessageBox.Show("Error: " + ex.Message, "Error");
+            }
+            finally {
+                if (oWB != null)
+                    oWB.Close();
+                if (File.Exists(outfile))
+                    System.Diagnostics.Process.Start(outfile);
             }
         }
     }
