@@ -15,8 +15,8 @@ namespace LSWFTPConnect {
         static List<FtpListItem> files = new List<FtpListItem>(); //file list
         static string folderName = ""; 
         static FtpClient client;
-        List<string> lifeLines;
-        List<Object> annLines;
+        List<Object[]> lifeLines;
+        List<Object[]> annLines;
         static PasswordRepository passRep = new PasswordRepository();
         static Microsoft.Office.Interop.Excel.Application oXL;
         static Microsoft.Office.Interop.Excel._Workbook oWB;
@@ -145,10 +145,25 @@ namespace LSWFTPConnect {
                          where data.Name.LocalName == "OLifE"
                          select data;
 
-            lifeLines = new List<string>();
-            annLines = new List<Object>();
+            lifeLines = new List<Object[]>();
+            annLines = new List<Object[]>();
+            Boolean skip = false;
 
             foreach (var data in oLifes) {//parent of the commission data is OLifE (1 to 1)
+                skip = false;
+                var parties = from party in data.Descendants()
+                              where party.Name.LocalName == "Party"
+                              select party;
+
+                foreach(var party in parties) {
+                    if (party.Element(ns0+"FullName").Value == "CLARK LOGAN DAVID") {
+                        skip = true;
+                        break;
+                    }
+                }
+                if (skip)
+                    continue;
+
                 string plan = data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "PlanName").Value.ToString();
                 DateTime date = Convert.ToDateTime(data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "IssueDate").Value);
                 DateTime sDate = Convert.ToDateTime(data.Element(ns0 + "FinancialStatement").Element(ns0 + "StatementDate").Value);
@@ -173,46 +188,14 @@ namespace LSWFTPConnect {
                     ren = amt;
                 } else comm = amt;
 
-                //if (type == "Renewal") {
-                //    line += ("0, " + amt.ToString());
-                //} else {
-                //    line += amt.ToString() + ", 0";
-                //}
-
-                //line += ", " + sDate;
-
-               // Console.WriteLine(line);
+                Object[] oArr = { polNum, owner, plan, date, prem, commRate, split, comm, ren };
                 if (polNum.StartsWith("LS")) {
-                    //lifeLines.Add(line);
-                } else annLines.Add(new AnnLine(polNum, owner, plan, date, prem, commRate, split, comm, ren));
+                    lifeLines.Add(oArr);
+                } else annLines.Add(oArr);
             }
 
             writeToExcel(annLines, outFile + "_Ann_out.xls");
-
-            //StreamWriter writer;
-            //if (annLines.Count > 0) {//write annuity lines
-            //    writer = new StreamWriter(outFile + "_AnnOut.csv");
-            //    writer.WriteLine("Policy, Full Name, Plan, Issue Date, Premium, Rate %, Rate, Commission, Renewal");
-            //    foreach (string item in annLines) {
-            //        writer.WriteLine(item);
-            //    }
-            //    writer.Close();
-            //}
-
-            //if (lifeLines.Count > 0) {//write life lines
-            //    writer = new StreamWriter(outFile + "_LifeOut.csv");
-            //    writer.WriteLine("Policy,Full Name,Plan,Issue Date,Premium,Rate %,Rate,Commission,Renewal");
-            //    foreach (string item in lifeLines) {
-            //        writer.WriteLine(item);
-            //    }
-            //    writer.Close();
-            //}
-
-            //if(File.Exists(outFile + "_LifeOut.csv"))
-            //    System.Diagnostics.Process.Start(outFile + "_LifeOut.csv");
-
-            //if(File.Exists(outFile + "_AnnOut.csv"))
-            //    System.Diagnostics.Process.Start(outFile + "_Ann_out.xls");
+            writeToExcel(lifeLines, outFile + "_LIFE_out.xls");
         }
 
         private void btnStore_Click(object sender, EventArgs e) {
@@ -240,7 +223,7 @@ namespace LSWFTPConnect {
             }
         }
 
-        public static void writeToExcel(List<Object> lines, string outfile) {
+        public static void writeToExcel(List<Object[]> lines, string outfile) {
             try {
                 //Start Excel and get Application object.
                 oXL = new Microsoft.Office.Interop.Excel.Application();
@@ -271,9 +254,7 @@ namespace LSWFTPConnect {
                     Microsoft.Office.Interop.Excel.XlVAlign.xlVAlignCenter;
 
                 for (int i = 0; i < lines.Count; i++) {
-                    AnnLine temp = (AnnLine)lines[i];
-                    object[] tempArr = temp.GetData();
-                    oSheet.get_Range("A" + (i + 2), "I" + (i + 2)).Value2 = tempArr;
+                    oSheet.get_Range("A" + (i + 2), "I" + (i + 2)).Value2 = lines[i];
                 }
                 oRng = oSheet.get_Range("A1", "I1");
                 oRng.EntireColumn.AutoFit();
