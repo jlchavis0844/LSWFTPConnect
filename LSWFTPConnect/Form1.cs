@@ -140,6 +140,7 @@ namespace LSWFTPConnect {
 
         private void ProcessCommReport(string inFile, string outFile) {
             XDocument xdoc = XDocument.Load(inFile);
+            bool ABC = inFile.Contains("5CF") || inFile.Contains("ABC");
             XNamespace ns0 = xdoc.Root.GetNamespaceOfPrefix("ns0");
             var oLifes = from data in xdoc.Descendants()
                          where data.Name.LocalName == "OLifE"
@@ -151,13 +152,19 @@ namespace LSWFTPConnect {
 
             foreach (var data in oLifes) {//parent of the commission data is OLifE (1 to 1)
                 skip = false;
+
                 var parties = from party in data.Descendants()
                               where party.Name.LocalName == "Party"
                               select party;
+                //if we are checking ABC files and the First party is not ABC, thats some BS so skip it, yo.
+                if (ABC && !parties.ElementAt(0).Element(ns0 + "FullName").Value.Contains("BUILDERS")) 
+                    continue;
 
-                foreach(var party in parties) {
+                foreach (var party in parties) {
                     if (party.Element(ns0+"FullName").Value == "CLARK LOGAN DAVID") {
                         skip = true;
+                        Console.WriteLine(data.Element(ns0 + "FinancialStatement").Element(ns0 + "CommissionStatement")
+                    .Element(ns0 + "CommissionDetail").Attribute("HoldingID").Value.ToString());
                         break;
                     }
                 }
