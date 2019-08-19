@@ -140,7 +140,6 @@ namespace LSWFTPConnect {
 
         private void ProcessCommReport(string inFile, string outFile) {
             XDocument xdoc = XDocument.Load(inFile);
-            bool ABC = inFile.Contains("5CF") || inFile.Contains("ABC");
             XNamespace ns0 = xdoc.Root.GetNamespaceOfPrefix("ns0");
             var oLifes = from data in xdoc.Descendants()
                          where data.Name.LocalName == "OLifE"
@@ -152,26 +151,25 @@ namespace LSWFTPConnect {
 
             foreach (var data in oLifes) {//parent of the commission data is OLifE (1 to 1)
                 skip = false;
-
                 var parties = from party in data.Descendants()
                               where party.Name.LocalName == "Party"
                               select party;
-                //if we are checking ABC files and the First party is not ABC, thats some BS so skip it, yo.
-                if (ABC && !parties.ElementAt(0).Element(ns0 + "FullName").Value.Contains("BUILDERS")) 
-                    continue;
 
-                foreach (var party in parties) {
+                foreach(var party in parties) {//specific patch for recurring entry
                     if (party.Element(ns0+"FullName").Value == "CLARK LOGAN DAVID") {
                         skip = true;
-                        Console.WriteLine(data.Element(ns0 + "FinancialStatement").Element(ns0 + "CommissionStatement")
-                    .Element(ns0 + "CommissionDetail").Attribute("HoldingID").Value.ToString());
                         break;
                     }
                 }
                 if (skip)
                     continue;
-
+                //check for plan of 'Non PlanCode'
                 string plan = data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "PlanName").Value.ToString();
+                if (plan == "Non PlanCode") {
+                    skip = true;
+                    continue;
+                }
+
                 DateTime date = Convert.ToDateTime(data.Element(ns0 + "Holding").Element(ns0 + "Policy").Element(ns0 + "IssueDate").Value);
                 DateTime sDate = Convert.ToDateTime(data.Element(ns0 + "FinancialStatement").Element(ns0 + "StatementDate").Value);
                 var commDet = data.Element(ns0 + "FinancialStatement").Element(ns0 + "CommissionStatement")
@@ -179,7 +177,7 @@ namespace LSWFTPConnect {
 
                 double amt = Convert.ToDouble(commDet.Element(ns0 + "EarnedAmt").Value);
                 string polNum = commDet.Attribute("HoldingID").Value.ToString();
-                string owner = commDet.Attribute("OwnerPartyID").Value.ToString();
+                string owner = commDet.Attribute("OwnerPartyID").Value.ToString().Replace("\'","`");
                 double commRate = Convert.ToDouble(commDet.Element(ns0 + "CommissionRate").Value);
                 double split = Convert.ToDouble(commDet.Element(ns0 + "SplitPercent").Value);
                 double prem = Convert.ToDouble(commDet.Element(ns0 + "PaymentBasisAmt").Value);
