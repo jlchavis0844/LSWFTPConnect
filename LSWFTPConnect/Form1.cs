@@ -29,11 +29,11 @@ namespace LSWFTPConnect {
         public Form1() {
             InitializeComponent();
 
-            if(passRep.GetPassword() != null && passRep.GetPassword() != "") {
+            if(passRep.GetPassword() != null && String.IsNullOrEmpty(passRep.GetPassword())) {
                 tbPassword.Text = passRep.GetPassword();
             }
 
-            if(passRep.GetPassword() == null || passRep.GetPassword() == "") {
+            if(passRep.GetPassword() == null || String.IsNullOrEmpty(passRep.GetPassword())) {
                 btnFiles.Enabled = false;
                 btnGo.Enabled = false;
             }
@@ -82,6 +82,7 @@ namespace LSWFTPConnect {
                 folderName = fbd.SelectedPath;
                 lblOutput.Text = folderName;
             }
+            fbd.Dispose();
         }
 
         private void btnGo_Click(object sender, EventArgs e) {
@@ -129,9 +130,10 @@ namespace LSWFTPConnect {
             FileStream stream = null;
 
             try {
-                stream = file.Open(FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                if(file != null)
+                    stream = file.Open(FileMode.Open, FileAccess.ReadWrite, FileShare.None);
             } catch (IOException) {
-                return true;
+                return false;
             } finally {
                 if (stream != null)
                     stream.Close();
@@ -201,14 +203,18 @@ namespace LSWFTPConnect {
                 } else comm = amt;
                 //                   0      1     2     3      4      5        6     7     8
                 Object[] oArr = { polNum, owner, plan, date, prem, commRate, split, comm, ren };
-                if (polNum.StartsWith("LS")) {
+                if (polNum.StartsWith("LS",StringComparison.CurrentCulture)) {
                     lifeLines.Add(oArr);
                 } else annLines.Add(oArr);
             }
             double TR_Total = annLines.Sum(aLine => (Convert.ToDouble(aLine[7]) + Convert.ToDouble(aLine[8])));
-            if(TrimbleRichard)
-                MessageBox.Show("Total with suspect line:\t" + TR_Total + "\n" +
-                    "Total Without suspect line:\t" + (TR_Total - 4), TR_Total + " vs " + (TR_Total - 4));              
+            if (TrimbleRichard) {
+                var result = MessageBox.Show("Total with suspect line:\t" + TR_Total + "\n" +
+                    "Total Without suspect line:\t" + (TR_Total - 4), TR_Total + " vs " + (TR_Total - 4) + "\n"+
+                    "Would you like to delete the suspect line?",
+                    MessageBoxButtons.YesNo);
+            }
+
             writeToExcel(annLines, outFile + "_Ann_out.xls");
             writeToExcel(lifeLines, outFile + "_LIFE_out.xls");
         }
@@ -236,9 +242,13 @@ namespace LSWFTPConnect {
                 lblStatus.Text = "Done Processesing";
 
             }
+            ofd.Dispose();
         }
 
         public static void writeToExcel(List<Object[]> lines, string outfile) {
+            if (lines == null || String.IsNullOrEmpty(outfile))
+                return;
+
             try {
                 //Start Excel and get Application object.
                 oXL = new Microsoft.Office.Interop.Excel.Application();
