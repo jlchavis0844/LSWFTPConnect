@@ -19,10 +19,11 @@ namespace LSWFTPConnect {
         List<Object[]> annLines;
         static PasswordRepository passRep = new PasswordRepository();
         static Microsoft.Office.Interop.Excel.Application oXL;
-        static Microsoft.Office.Interop.Excel._Workbook oWB;
-        static Microsoft.Office.Interop.Excel._Worksheet oSheet;
-        static Microsoft.Office.Interop.Excel.Range oRng;
+        static _Workbook oWB;
+        static _Worksheet oSheet;
+        static Range oRng;
         static object misvalue = System.Reflection.Missing.Value;
+        static bool TrimbleRichard = false;
 
 
         public Form1() {
@@ -183,6 +184,12 @@ namespace LSWFTPConnect {
                 double prem = Convert.ToDouble(commDet.Element(ns0 + "PaymentBasisAmt").Value);
                 var type = commDet.Element(ns0 + "CommissionType").Value.ToString();
 
+                if(owner == "Trimble Richard" && amt == 4) {
+                    MessageBox.Show("Possible Erroneous Entry for Timble Richard, $4.00 comm\n"+
+                        "You may need to remove this line to balance the payment", 
+                        "Trimble Richard Error");
+                    TrimbleRichard = true;
+                }
                 //string line = polNum + ", " + owner + ", " + plan + ", " + date + ", " +
                 //    prem + ", " + commRate + ", " + split + ", ";
 
@@ -192,13 +199,16 @@ namespace LSWFTPConnect {
                 if (type == "Renewal") {
                     ren = amt;
                 } else comm = amt;
-
+                //                   0      1     2     3      4      5        6     7     8
                 Object[] oArr = { polNum, owner, plan, date, prem, commRate, split, comm, ren };
                 if (polNum.StartsWith("LS")) {
                     lifeLines.Add(oArr);
                 } else annLines.Add(oArr);
             }
-
+            double TR_Total = annLines.Sum(aLine => (Convert.ToDouble(aLine[7]) + Convert.ToDouble(aLine[8])));
+            if(TrimbleRichard)
+                MessageBox.Show("Total with suspect line:\t" + TR_Total + "\n" +
+                    "Total Without suspect line:\t" + (TR_Total - 4), TR_Total + " vs " + (TR_Total - 4));              
             writeToExcel(annLines, outFile + "_Ann_out.xls");
             writeToExcel(lifeLines, outFile + "_LIFE_out.xls");
         }
@@ -237,8 +247,8 @@ namespace LSWFTPConnect {
                 oXL.DisplayAlerts = false;
 
                 //Get a new workbook.
-                oWB = (Microsoft.Office.Interop.Excel._Workbook)(oXL.Workbooks.Add(""));
-                oSheet = (Microsoft.Office.Interop.Excel._Worksheet)oWB.ActiveSheet;
+                oWB = oXL.Workbooks.Add("");
+                oSheet = oWB.ActiveSheet;
 
                 //Add table headers going cell by cell.
                 oSheet.Cells[1, 1] = "Policy";
@@ -273,7 +283,7 @@ namespace LSWFTPConnect {
                     Type.Missing,
                     false,
                     false,
-                    Microsoft.Office.Interop.Excel.XlSaveAsAccessMode.xlNoChange,
+                    XlSaveAsAccessMode.xlNoChange,
                     Type.Missing,
                     Type.Missing,
                     Type.Missing,
